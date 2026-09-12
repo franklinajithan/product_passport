@@ -29,8 +29,11 @@ HTTP stays in `src/app/api`. Domain logic stays in `services`. UI for a domain s
 | --- | --- |
 | `/` | Marketing homepage + barcode search |
 | `/search` | Global product search |
+| `/validate` | Identifier validation (format, check digit, registry, ownership) |
 | `/scan` | Camera barcode scanner |
 | `/product/[gtin]` | Public SEO product page |
+| `/01/[gtin]` | GS1 Digital Link resolver |
+| `/admin/standards` | Versioned standards reference (algorithms are not editable) |
 | `/login` `/register` `/forgot-password` `/reset-password` `/verify-email` | Auth |
 | `/organisation/setup` | Manufacturer / distributor / retailer wizard |
 | `/organisation` | Company profile and team |
@@ -38,13 +41,19 @@ HTTP stays in `src/app/api`. Domain logic stays in `services`. UI for a domain s
 | `/admin` | Super-admin workspace |
 | `/developers` | API documentation |
 | `/api/v1/products/{gtin}` | Public product API |
+| `/api/v1/gtins/{gtin}` | GTIN lookup and verification |
+| `/api/v1/barcodes/validate` | Check-digit and structure validation |
+| `/api/v1/barcodes/render` | Barcode symbol rendering (SVG/PNG) |
+| `/api/v1/barcodes/scan` | Decode GS1 payloads then look up the product |
 | `/api/auth/*` | Auth.js handlers |
 
 ### Database
 
 Prisma models cover the full registry: users, organisations, brands, manufacturers, products, translations, barcodes, measurements, ingredients, allergens, nutrition, images, certifications, packaging, claims, reports, recalls, API keys, usage, subscriptions and audit logs. UUID primary keys. Unique constraint on barcode values. Indexes on GTIN, names, brand, manufacturer, organisation, status and created date.
 
-Official GS1 numbers are **never generated**. Manufacturers supply authorised GTINs. Products without a GTIN receive an internal id such as `GPR-00000000001`, labelled as not a GS1 number.
+Official GS1 numbers are **never generated**. The platform validates GTINs, stores allocated identifiers, and generates barcode *symbols* from valid GTINs. A valid check digit is not the same as official ownership.
+
+Standards logic lives in `src/lib/standards` and is framework-independent.
 
 ## Local setup
 

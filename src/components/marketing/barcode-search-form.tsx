@@ -4,12 +4,14 @@ import { Search } from "lucide-react";
 export function BarcodeSearchForm({
   initialQuery = "",
   size = "default",
+  action = "/search",
 }: {
   initialQuery?: string;
   size?: "default" | "hero";
+  action?: string;
 }) {
   return (
-    <form action="/search" method="get" className="w-full">
+    <form action={action} method="get" className="w-full">
       <label htmlFor="product-search" className="sr-only">
         Search by GTIN, EAN, UPC or product name
       </label>
@@ -26,7 +28,7 @@ export function BarcodeSearchForm({
             id="product-search"
             name="q"
             defaultValue={initialQuery}
-            placeholder="Enter GTIN, EAN, UPC or product name"
+            placeholder="Search GTIN, EAN, UPC, brand or product name"
             className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             autoComplete="off"
           />
@@ -42,6 +44,10 @@ export function BarcodeSearchForm({
         Spaces and hyphens in barcodes are ignored.{" "}
         <Link href="/scan" className="underline-offset-4 hover:underline">
           Scan with camera
+        </Link>
+        {" · "}
+        <Link href="/validate" className="underline-offset-4 hover:underline">
+          Validate an identifier
         </Link>
       </p>
     </form>

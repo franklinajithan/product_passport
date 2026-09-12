@@ -15,9 +15,12 @@ export function OrganisationStatusBadge({ status }: { status: OrganisationStatus
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
   const map = {
     DRAFT: { variant: "secondary" as const, label: "Draft" },
+    PENDING_VERIFICATION: { variant: "warning" as const, label: "Pending verification" },
     ACTIVE: { variant: "success" as const, label: "Active" },
     DISCONTINUED: { variant: "warning" as const, label: "Discontinued" },
+    WITHDRAWN: { variant: "warning" as const, label: "Withdrawn" },
     RECALLED: { variant: "destructive" as const, label: "Recalled" },
+    SUPERSEDED: { variant: "secondary" as const, label: "Superseded" },
     ARCHIVED: { variant: "secondary" as const, label: "Archived" },
   };
   const item = map[status];

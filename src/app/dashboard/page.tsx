@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/authentication/session";
 import { getMembershipForUser } from "@/services/organisation.service";
-import { getManufacturerDashboardData } from "@/services/product.service";
+import { prisma } from "@/database/client";
 import {
   calculateCompleteness,
   completenessFromProduct,
   countByStatus,
 } from "@/services/product-completeness.service";
+import { getManufacturerDashboardData } from "@/services/product.service";
 import { OrganisationStatusBadge } from "@/components/feedback/status-badges";
 import { StatCard } from "@/components/feedback/stat-card";
 import { Alert } from "@/components/ui/alert";
@@ -70,6 +71,35 @@ export default async function DashboardPage() {
     .filter((item) => item.completeness.score < 100)
     .slice(0, 5);
 
+  const inNinetyDays = new Date();
+  inNinetyDays.setDate(inNinetyDays.getDate() + 90);
+  const [gtinIssues, missingCase, twoDReady, expiringCerts] = await Promise.all([
+    prisma.productIdentifier.count({
+      where: {
+        organisationId: membership.organisationId,
+        OR: [{ checkDigitValid: false }, { ownershipStatus: "UNVERIFIED" }],
+      },
+    }),
+    prisma.product.count({
+      where: {
+        organisationId: membership.organisationId,
+        status: "ACTIVE",
+        hierarchyAsChild: { none: {} },
+        hierarchyAsParent: { none: {} },
+      },
+    }),
+    prisma.product.count({
+      where: { organisationId: membership.organisationId, digitalLinks: { some: {} } },
+    }),
+    prisma.productCertification.count({
+      where: {
+        product: { organisationId: membership.organisationId },
+        expiresAt: { lte: inNinetyDays, gte: new Date() },
+      },
+    }),
+  ]);
+  const twoDPercent = counts.total === 0 ? 0 : Math.round((twoDReady / counts.total) * 100);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -104,15 +134,47 @@ export default async function DashboardPage() {
         <StatCard label="Total products" value={counts.total} />
         <StatCard label="Active products" value={counts.active} />
         <StatCard label="Draft products" value={counts.draft} />
-        <StatCard label="Missing English" value={counts.missingEnglish} />
+        <StatCard label="Needs attention" value={counts.incomplete} />
+        <StatCard label="Missing translations (EN)" value={counts.missingEnglish} />
         <StatCard label="Missing images" value={counts.missingImages} />
-        <StatCard label="Incomplete" value={counts.incomplete} />
         <StatCard label="API requests this month" value={apiRequests} />
-        <StatCard
-          label="Team members"
-          value={membership.organisation._count.members}
-        />
+        <StatCard label="Team members" value={membership.organisation._count.members} />
+        <StatCard label="GTIN verification issues" value={gtinIssues} />
+        <StatCard label="Products missing case GTIN" value={missingCase} />
+        <StatCard label="2D readiness" value={`${twoDPercent}%`} />
+        <StatCard label="Certifications expiring (90d)" value={expiringCerts} />
       </div>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold">Products by status</h2>
+          <div className="mt-4 space-y-3">
+            <Meter label="Active" value={counts.active} total={counts.total || 1} />
+            <Meter label="Draft" value={counts.draft} total={counts.total || 1} />
+            <Meter label="Needs attention" value={counts.incomplete} total={counts.total || 1} />
+          </div>
+        </article>
+        <article className="rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold">Completeness distribution</h2>
+          <div className="mt-4 space-y-3">
+            <Meter
+              label="Complete"
+              value={products.filter((item) => item.completenessScore >= 90).length}
+              total={counts.total || 1}
+            />
+            <Meter
+              label="Partial"
+              value={products.filter((item) => item.completenessScore >= 50 && item.completenessScore < 90).length}
+              total={counts.total || 1}
+            />
+            <Meter
+              label="Low"
+              value={products.filter((item) => item.completenessScore < 50).length}
+              total={counts.total || 1}
+            />
+          </div>
+        </article>
+      </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -171,6 +233,21 @@ export default async function DashboardPage() {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function Meter({ label, value, total }: { label: string; value: number; total: number }) {
+  const width = Math.round((value / total) * 100);
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-sm">
+        <span>{label}</span>
+        <span>{value}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
+      </div>
     </div>
   );
 }

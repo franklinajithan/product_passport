@@ -56,6 +56,7 @@ export function calculateCompleteness(input: CompletenessInput): CompletenessRes
 
 export function completenessFromProduct(product: {
   barcodes: { id: string }[];
+  identifiers?: { id: string }[];
   translations: { languageCode: string; productName: string | null; ingredients: string | null }[];
   brandId: string | null;
   manufacturerId: string | null;
@@ -72,7 +73,7 @@ export function completenessFromProduct(product: {
   const hasIngredientText = product.translations.some((item) => Boolean(item.ingredients));
 
   return {
-    hasBarcode: product.barcodes.length > 0,
+    hasBarcode: product.barcodes.length > 0 || Boolean(product.identifiers?.length),
     hasName: anyName,
     hasEnglishName: Boolean(english?.productName),
     hasBrand: Boolean(product.brandId),

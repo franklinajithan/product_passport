@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { BarcodeSearchForm } from "@/components/marketing/barcode-search-form";
 import { ProductResultCard } from "@/components/products/product-result-card";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { searchProducts, findProductByGtin } from "@/services/product.service";
+import { searchProducts, findProductByPublicId } from "@/services/product.service";
 import { looksLikeBarcode } from "@/utilities/gtin";
 
 export default async function SearchPage({
@@ -14,9 +14,12 @@ export default async function SearchPage({
   const query = q?.trim() ?? "";
 
   if (query && looksLikeBarcode(query)) {
-    const exact = await findProductByGtin(query);
+    const exact = await findProductByPublicId(query);
     if (exact) {
-      const identifier = exact.barcodes.find((item) => item.isPrimary)?.value ?? exact.gprId;
+      const identifier =
+        exact.identifiers[0]?.displayValue ??
+        exact.barcodes.find((item) => item.isPrimary)?.value ??
+        exact.gprId;
       redirect(`/product/${identifier}`);
     }
   }
@@ -37,9 +40,9 @@ export default async function SearchPage({
         ) : results.length === 0 ? (
           <EmptyState
             title="Product not found"
-            description="Nothing in the registry matched that query. Manufacturers can add the product after signing in. Consumers and retailers can report a missing product from the scanner page."
-            actionLabel="Scan a barcode"
-            actionHref="/scan"
+            description="Nothing in the registry matched that query. You can still validate the identifier format and check digit, or file an ownership claim."
+            actionLabel="Validate identifier"
+            actionHref={`/validate?q=${encodeURIComponent(query)}`}
           />
         ) : (
           results.map((product) => (

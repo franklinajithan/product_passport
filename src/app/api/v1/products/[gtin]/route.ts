@@ -36,34 +36,93 @@ export async function GET(
     const front = product.images.find((item) => item.type === "FRONT") ?? product.images.find((item) => item.isMain);
     const back = product.images.find((item) => item.type === "BACK");
     const primary = product.barcodes.find((item) => item.isPrimary) ?? product.barcodes[0];
+    const gtinIdentifier =
+      product.identifiers.find((item) => item.identifierType.startsWith("GTIN") || item.identifierType === "EAN_13" || item.identifierType === "UPC_A") ??
+      product.identifiers[0];
+    const digitalLink = product.digitalLinks[0];
 
     return NextResponse.json({
-      gtin: primary?.value ?? null,
+      gtin: primary?.value ?? gtinIdentifier?.displayValue ?? null,
       gprId: product.gprId,
       status: product.status,
       verification: product.verification,
-      brand: { name: product.brand.name },
+      lastVerifiedAt: product.lastVerifiedAt,
+      brand: { id: product.brandId, name: product.brand.name },
       names,
       netContent: product.measurement?.netWeightValue
         ? {
             value: decimal(product.measurement.netWeightValue),
             unit: product.measurement.netWeightUnit,
+            unitCode: product.measurement.netContentUnitCode,
+            variableMeasure: product.measurement.isVariableMeasure,
           }
         : product.measurement?.netVolumeValue
           ? {
               value: decimal(product.measurement.netVolumeValue),
               unit: product.measurement.netVolumeUnit,
+              unitCode: product.measurement.netContentUnitCode,
+              variableMeasure: product.measurement.isVariableMeasure,
             }
           : null,
       manufacturer: {
+        id: product.manufacturerId,
         name: product.manufacturer.name,
         country: product.manufacturer.country.iso2,
       },
+      parties: product.parties.map((party) => ({
+        role: party.role,
+        name: party.name,
+        countryCode: party.countryCode,
+      })),
       ingredients,
+      allergens: product.allergens.map((item) => ({
+        name: item.allergen.name,
+        presence: item.presence,
+      })),
+      nutrition: product.nutrition
+        ? {
+            basis: product.nutrition.basis,
+            energyKcal: decimal(product.nutrition.energyKcal),
+            fat: decimal(product.nutrition.fat),
+            carbohydrate: decimal(product.nutrition.carbohydrate),
+            protein: decimal(product.nutrition.protein),
+            salt: decimal(product.nutrition.salt),
+          }
+        : null,
       images: {
         front: front?.url ?? null,
         back: back?.url ?? null,
       },
+      lifecycle: {
+        status: product.status,
+        recall: product.recalls[0]
+          ? { reason: product.recalls[0].reason, recalledAt: product.recalls[0].recalledAt }
+          : null,
+      },
+      identifiers: product.identifiers.map((item) => ({
+        type: item.identifierType,
+        value: item.displayValue,
+        canonicalGTIN14: item.canonicalGtin14,
+        issuingSystem: item.issuingSystem,
+        checkDigitValid: item.checkDigitValid,
+        ownership: item.ownershipStatus,
+      })),
+      barcodeCarriers: product.identifiers.flatMap((item) => item.symbols.map((symbol) => symbol.symbology)),
+      digitalLink: digitalLink?.uri ?? null,
+      packagingHierarchy: [
+        ...product.hierarchyAsParent.map((link) => ({
+          level: link.packagingLevel,
+          role: "parent",
+          quantity: link.quantity,
+          childGtin: link.childGtin,
+        })),
+        ...product.hierarchyAsChild.map((link) => ({
+          level: link.packagingLevel,
+          role: "child",
+          quantity: link.quantity,
+          parentGtin: link.parentGtin,
+        })),
+      ],
     });
   } catch (error) {
     if (error instanceof RateLimitError) {

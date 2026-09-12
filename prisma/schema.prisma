@@ -45,9 +45,12 @@ enum OrganisationMemberRole {
 
 enum ProductStatus {
   DRAFT
+  PENDING_VERIFICATION
   ACTIVE
   DISCONTINUED
+  WITHDRAWN
   RECALLED
+  SUPERSEDED
   ARCHIVED
 }
 
@@ -203,6 +206,8 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   subscriptions          Subscription[]
   assignedDuplicates     DuplicateCandidate[] @relation("DuplicateReviewer")
+  productRevisions       ProductRevision[]
+  identifierClaims       IdentifierClaim[]
 
   @@index([role])
   @@index([status])
@@ -285,6 +290,7 @@ model Country {
   originProducts         Product[]         @relation("ProductOriginCountry")
   productCountries       ProductCountry[]
   recallCountries        ProductRecallCountry[]
+  gs1Prefixes            Gs1CompanyPrefix[]
 
   @@index([name])
 }
@@ -358,6 +364,11 @@ model Organisation {
   claims         ProductClaim[]
   reportsReceived ProductReport[]      @relation("OrganisationReports")
   audits         AuditLog[]
+  gs1Prefixes    Gs1CompanyPrefix[]
+  identifiers    ProductIdentifier[]
+  productParties ProductParty[]
+  identifierClaims IdentifierClaim[]
+  webhooks       Webhook[]
 
   @@index([status])
   @@index([type])
@@ -511,6 +522,18 @@ model Product {
   duplicateLeft  DuplicateCandidate[] @relation("DuplicateProductA")
   duplicateRight DuplicateCandidate[] @relation("DuplicateProductB")
   catalogueItems RetailerCatalogueItem[]
+  identifiers    ProductIdentifier[]
+  parties        ProductParty[]
+  digitalLinks   DigitalLink[]
+  hierarchyAsParent PackagingHierarchy[] @relation("HierarchyParent")
+  hierarchyAsChild  PackagingHierarchy[] @relation("HierarchyChild")
+  revisions      ProductRevision[]
+  instances      ProductInstance[]
+  identifierClaims IdentifierClaim[]
+  fieldProvenance FieldProvenance[]
+  predecessor    Product?  @relation("ProductSuccession", fields: [predecessorId], references: [id])
+  successors     Product[] @relation("ProductSuccession")
+  predecessorId  String?
 
   @@index([organisationId])
   @@index([brandId])
@@ -558,9 +581,13 @@ model ProductTranslation {
   productName          String
   description          String?  @db.Text
   ingredients          String?  @db.Text
+  allergenStatement    String?  @db.Text
   usageInstructions    String?  @db.Text
   storageInstructions  String?  @db.Text
   warningText          String?  @db.Text
+  marketingDescription String?  @db.Text
+  isOriginalLanguage   Boolean  @default(false)
+  translationSource    String   @default("MANUFACTURER")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -607,6 +634,9 @@ model ProductMeasurement {
   heightMm         Decimal?         @db.Decimal(12, 2)
   grossWeightValue Decimal?         @db.Decimal(12, 4)
   grossWeightUnit  MeasurementUnit?
+  isVariableMeasure Boolean         @default(false)
+  pricePerUnit     Decimal?         @db.Decimal(12, 4)
+  netContentUnitCode String?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
@@ -959,4 +989,414 @@ model RetailerCatalogueItem {
 
   @@unique([userId, productId])
   @@index([userId])
+}
+
+enum IdentifierType {
+  GTIN_8
+  GTIN_12
+  GTIN_13
+  GTIN_14
+  UPC_A
+  EAN_8
+  EAN_13
+  ISBN_10
+  ISBN_13
+  PLU
+  SKU
+  MPN
+  INTERNAL
+  GS1_DIGITAL_LINK
+  OTHER
+}
+
+enum IdentifierStatus {
+  ACTIVE
+  RESERVED
+  RETIRED
+  SUPERSEDED
+  DISPUTED
+}
+
+enum OwnershipStatus {
+  UNVERIFIED
+  FORMAT_VALID
+  OWNER_VERIFIED
+  GS1_VERIFIED
+  DISPUTED
+  RETIRED
+}
+
+enum TradePartyRole {
+  BRAND_OWNER
+  MANUFACTURER
+  CONTRACT_MANUFACTURER
+  IMPORTER
+  DISTRIBUTOR
+  RETAILER
+  DATA_PROVIDER
+}
+
+enum PackagingLevel {
+  CONSUMER_UNIT
+  INNER_PACK
+  CASE
+  TRAY
+  DISPLAY
+  PALLET
+  LOGISTIC_UNIT
+}
+
+enum BarcodeSymbology {
+  EAN_8
+  EAN_13
+  UPC_A
+  UPC_E
+  ITF_14
+  GS1_128
+  GS1_DATABAR
+  GS1_DATAMATRIX
+  GS1_QR_CODE
+  QR_CODE
+  DATA_MATRIX
+}
+
+enum GtinDecision {
+  SAME_GTIN
+  NEW_GTIN_REQUIRED
+  REVIEW_REQUIRED
+}
+
+enum IdentifierClaimType {
+  CLAIM_GTIN
+  CLAIM_BRAND
+  CLAIM_PRODUCT
+  REPORT_MISASSIGNMENT
+  REPORT_COUNTERFEIT
+  REPORT_DUPLICATE
+}
+
+model Gs1CompanyPrefix {
+  id                       String    @id @default(uuid())
+  organisationId           String
+  prefix                   String
+  countryId                String?
+  issuingMemberOrganisation String?
+  status                   OwnershipStatus @default(UNVERIFIED)
+  verifiedAt               DateTime?
+  source                   String?
+  allocationCapacity       Int?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  country      Country?    @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  identifiers  ProductIdentifier[]
+
+  @@unique([prefix])
+  @@index([organisationId])
+}
+
+model ProductIdentifier {
+  id                   String           @id @default(uuid())
+  productId            String?
+  organisationId       String?
+  identifierType       IdentifierType
+  identifierValue      String
+  canonicalGtin14      String?
+  displayValue         String
+  issuingSystem        String
+  issuingOrganisation  String?
+  status               IdentifierStatus @default(ACTIVE)
+  checkDigitValid      Boolean          @default(false)
+  ownershipStatus      OwnershipStatus  @default(UNVERIFIED)
+  verified             Boolean          @default(false)
+  verifiedAt           DateTime?
+  verificationSource   String?
+  gs1CompanyPrefixId   String?
+  standardKey          String?
+  standardVersion      String?
+  createdAt            DateTime         @default(now())
+  retiredAt            DateTime?
+
+  product          Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  organisation     Organisation?     @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  gs1CompanyPrefix Gs1CompanyPrefix? @relation(fields: [gs1CompanyPrefixId], references: [id], onDelete: SetNull)
+  symbols          BarcodeSymbol[]
+  digitalLinks     DigitalLink[]
+  qualityChecks    BarcodeQualityCheck[]
+  claims           IdentifierClaim[]
+
+  @@unique([issuingSystem, identifierValue])
+  @@unique([canonicalGtin14])
+  @@index([productId])
+  @@index([organisationId])
+  @@index([identifierType, status])
+}
+
+model BarcodeSymbol {
+  id                   String           @id @default(uuid())
+  productIdentifierId  String
+  symbology            BarcodeSymbology
+  encodedData          String
+  humanReadableText    String
+  magnification        Float?
+  xDimension           Float?
+  height               Float?
+  quietZone            Float?
+  format               String
+  svg                  String?          @db.Text
+  createdAt            DateTime         @default(now())
+
+  identifier ProductIdentifier @relation(fields: [productIdentifierId], references: [id], onDelete: Cascade)
+  quality    BarcodeQualityCheck[]
+
+  @@index([productIdentifierId])
+}
+
+model BarcodeQualityCheck {
+  id            String   @id @default(uuid())
+  identifierId  String
+  symbolId      String?
+  standard      String   @default("ISO/IEC 15416")
+  overallGrade  String?
+  contrast      Float?
+  modulation    Float?
+  decodability  Float?
+  defects       Float?
+  quietZones    String?
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+
+  identifier ProductIdentifier @relation(fields: [identifierId], references: [id], onDelete: Cascade)
+  symbol     BarcodeSymbol?    @relation(fields: [symbolId], references: [id], onDelete: SetNull)
+}
+
+model DigitalLink {
+  id                 String   @id @default(uuid())
+  productId          String
+  identifierId       String?
+  domain             String
+  primaryIdentifier  String
+  qualifiers         Json?
+  attributes         Json?
+  uri                String
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  product    Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  identifier ProductIdentifier? @relation(fields: [identifierId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([uri])
+}
+
+model PackagingHierarchy {
+  id               String         @id @default(uuid())
+  parentProductId  String
+  childProductId   String
+  quantity         Int
+  packagingLevel   PackagingLevel
+  parentGtin       String?
+  childGtin        String?
+  createdAt        DateTime       @default(now())
+
+  parent Product @relation("HierarchyParent", fields: [parentProductId], references: [id], onDelete: Cascade)
+  child  Product @relation("HierarchyChild", fields: [childProductId], references: [id], onDelete: Cascade)
+
+  @@index([parentProductId])
+  @@index([childProductId])
+}
+
+model ProductParty {
+  id             String         @id @default(uuid())
+  productId      String
+  organisationId String?
+  role           TradePartyRole
+  name           String
+  countryCode    String?
+  createdAt      DateTime       @default(now())
+
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+
+  @@index([productId, role])
+}
+
+model ProductRevision {
+  id            String        @id @default(uuid())
+  productId     String
+  version       Int
+  effectiveFrom DateTime      @default(now())
+  effectiveTo   DateTime?
+  status        ProductStatus @default(ACTIVE)
+  changeReason  String?
+  gtinDecision  GtinDecision?
+  snapshot      Json?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([productId, version])
+  @@index([productId, effectiveFrom])
+}
+
+model ProductInstance {
+  id             String    @id @default(uuid())
+  productId      String
+  gtin           String?
+  lot            String?
+  serial         String?
+  productionDate DateTime?
+  expiryDate     DateTime?
+  bestBeforeDate DateTime?
+  createdAt      DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, lot])
+}
+
+model Standard {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      String
+  source    String?
+  createdAt DateTime @default(now())
+
+  versions StandardVersion[]
+}
+
+model StandardVersion {
+  id            String   @id @default(uuid())
+  standardId    String
+  version       String
+  publishedDate DateTime?
+  effectiveDate DateTime?
+  status        String   @default("ACTIVE")
+
+  standard Standard @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  rules    StandardRule[]
+
+  @@unique([standardId, version])
+}
+
+model StandardRule {
+  id               String @id @default(uuid())
+  standardVersionId String
+  key              String
+  title            String
+  payload          Json
+
+  standardVersion StandardVersion @relation(fields: [standardVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([standardVersionId, key])
+}
+
+model Gs1ApplicationIdentifier {
+  id                String  @id @default(uuid())
+  ai                String  @unique
+  title             String
+  description       String
+  dataType          String
+  minLength         Int
+  maxLength         Int
+  fixedLength       Boolean
+  decimalIndicator  Boolean
+}
+
+model UnitOfMeasure {
+  id           String  @id @default(uuid())
+  code         String  @unique
+  displayUnit  String
+  title        String
+  quantityType String
+}
+
+model IdentifierClaim {
+  id             String              @id @default(uuid())
+  type           IdentifierClaimType
+  identifierId   String?
+  productId      String?
+  organisationId String
+  claimantId     String
+  evidenceUrl    String?
+  evidenceNote   String?             @db.Text
+  status         ClaimStatus         @default(PENDING)
+  reviewNote     String?             @db.Text
+  reviewedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  identifier   ProductIdentifier? @relation(fields: [identifierId], references: [id], onDelete: SetNull)
+  product      Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  claimant     User               @relation(fields: [claimantId], references: [id], onDelete: Cascade)
+
+  @@index([status, type])
+  @@index([productId])
+  @@index([identifierId])
+}
+
+model FieldProvenance {
+  id                 String        @id @default(uuid())
+  productId          String?
+  entityType         String
+  entityId           String
+  fieldName          String
+  value              String        @db.Text
+  sourceType         String
+  sourceOrganisation String?
+  sourceUrl          String?
+  authority          DataAuthority @default(COMMUNITY)
+  verified           Boolean       @default(false)
+  verifiedBy         String?
+  confidence         Int           @default(50)
+  importDate         DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId, fieldName])
+  @@index([productId])
+}
+
+enum DataAuthority {
+  VERIFIED_BRAND_OWNER
+  AUTHORISED_MANUFACTURER
+  AUTHORISED_DISTRIBUTOR
+  RETAILER
+  TRUSTED_EXTERNAL
+  COMMUNITY
+}
+
+model Webhook {
+  id             String    @id @default(uuid())
+  organisationId String
+  endpoint       String
+  secretHash     String
+  events         Json
+  status         String    @default("ACTIVE")
+  lastDeliveryAt DateTime?
+  failureCount   Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+
+  @@index([organisationId])
+}
+
+model WebhookDelivery {
+  id         String   @id @default(uuid())
+  webhookId  String
+  event      String
+  statusCode Int?
+  success    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt])
 }

@@ -2,8 +2,14 @@ import { notFound } from "next/navigation";
 import { findProductByPublicId } from "@/services/product.service";
 import { VerificationBadge, ProductStatusBadge } from "@/components/feedback/status-badges";
 import { Alert } from "@/components/ui/alert";
-import { formatMeasurement } from "@/utilities/format";
+import { formatDate, formatMeasurement } from "@/utilities/format";
 import { DEFAULT_LANGUAGE } from "@/utilities/constants";
+import { gtinIssuanceDisclaimer, internalIdentifierDisclaimer } from "@/lib/standards/identifiers/namespace";
+import { ownershipLabel } from "@/lib/standards/identifiers/ownership";
+import { detectGTINType } from "@/lib/standards/gs1/gtin";
+import { ProductPassport, type ProductPassportView } from "@/components/products/product-passport";
+import type { DemoPackNode } from "@/data/demo-showcase";
+import type { GtinDecision } from "@/lib/standards/types";
 
 export async function generateMetadata({
   params,
@@ -37,148 +43,149 @@ export default async function ProductPage({
 
   const english = product.translations.find((item) => item.languageCode === DEFAULT_LANGUAGE);
   const original =
+    product.translations.find((item) => item.isOriginalLanguage) ??
     product.translations.find((item) => item.languageCode !== DEFAULT_LANGUAGE) ??
     product.translations[0];
   const primaryBarcode = product.barcodes.find((item) => item.isPrimary) ?? product.barcodes[0];
+  const primaryIdentifier =
+    product.identifiers.find((item) => item.status !== "RETIRED") ?? product.identifiers[0];
+  const digitalLink = product.digitalLinks[0];
+  const brandOwner = product.parties.find((item) => item.role === "BRAND_OWNER");
+  const manufacturerParty = product.parties.find((item) => item.role === "MANUFACTURER");
+  const importer = product.parties.find((item) => item.role === "IMPORTER");
   const mainImage = product.images.find((item) => item.isMain) ?? product.images[0];
   const netContent =
     formatMeasurement(product.measurement?.netWeightValue, product.measurement?.netWeightUnit) ??
     formatMeasurement(product.measurement?.netVolumeValue, product.measurement?.netVolumeUnit);
   const latestRecall = product.recalls[0];
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const publicPath = `/product/${primaryBarcode?.value ?? product.gprId}`;
+  const printedGtin = primaryIdentifier?.displayValue ?? primaryBarcode?.value ?? null;
+  const carriers = [
+    ...new Set(
+      [
+        ...primaryIdentifier?.symbols.map((symbol) => symbol.symbology.replaceAll("_", "-")) ?? [],
+        primaryBarcode?.type ? String(primaryBarcode.type).replaceAll("_", "-") : null,
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  ];
+
+  const packTree: DemoPackNode[] = [];
+  if (product.hierarchyAsChild[0]) {
+    const parent = product.hierarchyAsChild[0].parent;
+    packTree.push({
+      level: "Parent pack",
+      gtin: product.hierarchyAsChild[0].parentGtin ?? parent.barcodes[0]?.value ?? parent.gprId,
+      quantityFromChild: null,
+      carrier: parent.barcodes[0]?.type.replaceAll("_", "-") ?? "—",
+    });
+  }
+  packTree.push({
+    level: "This trade item",
+    gtin: printedGtin ?? product.gprId,
+    quantityFromChild: product.hierarchyAsChild[0]?.quantity ?? null,
+    carrier: carriers[0] ?? "—",
+  });
+  for (const link of product.hierarchyAsParent) {
+    packTree.push({
+      level: link.packagingLevel.replaceAll("_", " "),
+      gtin: link.childGtin ?? link.child.barcodes[0]?.value ?? link.child.gprId,
+      quantityFromChild: link.quantity,
+      carrier: link.child.barcodes[0]?.type.replaceAll("_", "-") ?? "—",
+    });
+  }
+
+  const view: ProductPassportView = {
+    gtin: printedGtin,
+    gtinType: printedGtin ? detectGTINType(printedGtin) : null,
+    canonicalGTIN14: primaryIdentifier?.canonicalGtin14 ?? null,
+    checkDigitValid: primaryIdentifier?.checkDigitValid ?? null,
+    ownership: primaryIdentifier ? ownershipLabel(primaryIdentifier.ownershipStatus) : "GTIN ownership not verified",
+    carriers,
+    issuer: primaryIdentifier?.issuingOrganisation ?? primaryIdentifier?.issuingSystem ?? null,
+    verification: product.verification,
+    name: original?.productName ?? english?.productName ?? product.gprId,
+    englishName: english?.productName ?? null,
+    originalName: original?.productName ?? null,
+    brand: product.brand.name,
+    manufacturer: manufacturerParty?.name ?? product.manufacturer.name,
+    brandOwner: brandOwner?.name ?? product.brand.name,
+    importer: importer?.name ?? null,
+    origin: product.originCountry?.name ?? null,
+    netContent: product.measurement?.isVariableMeasure
+      ? `${netContent ?? "Variable measure"} (variable measure)`
+      : netContent,
+    status: product.status,
+    lastVerified: product.lastVerifiedAt ? formatDate(product.lastVerifiedAt) : null,
+    ingredients: english?.ingredients || original?.ingredients || null,
+    allergens: product.allergens.map(
+      (item) => `${item.allergen.name}: ${item.presence.replaceAll("_", " ").toLowerCase()}`,
+    ),
+    nutrition: product.nutrition
+      ? [
+          { label: "Energy", value: `${String(product.nutrition.energyKcal ?? "—")} kcal` },
+          { label: "Fat", value: `${String(product.nutrition.fat ?? "—")} g` },
+          { label: "Saturates", value: `${String(product.nutrition.saturatedFat ?? "—")} g` },
+          { label: "Carbohydrate", value: `${String(product.nutrition.carbohydrate ?? "—")} g` },
+          { label: "Sugars", value: `${String(product.nutrition.sugars ?? "—")} g` },
+          { label: "Protein", value: `${String(product.nutrition.protein ?? "—")} g` },
+          { label: "Salt", value: `${String(product.nutrition.salt ?? "—")} g` },
+          { label: "Fibre", value: `${String(product.nutrition.fibre ?? "—")} g` },
+        ]
+      : [],
+    packaging: product.packaging
+      ? `${product.packaging.type.toLowerCase()} · ${product.packaging.material.toLowerCase()}`
+      : null,
+    translations: product.translations.map((row) => ({
+      language: row.languageCode,
+      name: row.productName,
+      source: row.translationSource,
+    })),
+    certifications: product.certifications.map((row) => row.certification.name),
+    countries: product.countries.map((row) => row.country.name),
+    digitalLink: digitalLink?.uri ?? null,
+    history: product.revisions.map((row) => ({
+      title: `Version ${row.version}`,
+      detail: row.changeReason ?? "Revision recorded.",
+      decision: (row.gtinDecision as GtinDecision | null) ?? null,
+    })),
+    packTree,
+    sku: product.sku,
+  };
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-10">
+    <div className="mx-auto w-full max-w-[1440px] px-4 py-10 sm:px-6">
       {product.status === "RECALLED" || latestRecall ? (
         <Alert variant="destructive" className="mb-6">
-          <strong>⚠ PRODUCT RECALL</strong>
-          <p className="mt-1">
-            {latestRecall?.reason ?? "This product has been recalled. Historical data is retained."}
-          </p>
+          <div id="recall">
+            <strong>Product recall</strong>
+            <p className="mt-1">
+              {latestRecall?.reason ?? "This product has been recalled. Historical data is retained."}
+            </p>
+            {latestRecall?.consumerInstructions ? (
+              <p className="mt-2">{latestRecall.consumerInstructions}</p>
+            ) : null}
+          </div>
         </Alert>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
-        <div className="flex h-72 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
-          {mainImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={mainImage.url} alt={mainImage.altText ?? original?.productName ?? ""} className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-sm text-muted-foreground">No product image</span>
-          )}
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">{product.brand.name}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            {original?.productName ?? english?.productName ?? product.gprId}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            English: {english?.productName ?? "English translation missing"}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <ProductStatusBadge status={product.status} />
-            <VerificationBadge level={product.verification} lastVerifiedAt={product.lastVerifiedAt} />
-          </div>
-          <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-            <Item
-              label="Barcode"
-              value={
-                primaryBarcode
-                  ? `${primaryBarcode.value}${primaryBarcode.isOfficial ? "" : " (internal, not a GS1 GTIN)"}`
-                  : product.gprId
-              }
-            />
-            <Item label="Internal ID" value={`${product.gprId} · not an official GS1 GTIN`} />
-            <Item label="Manufacturer" value={product.manufacturer.name} />
-            <Item label="Country of origin" value={product.originCountry?.name} />
-            <Item label="Net content" value={netContent} />
-            <Item label="Category" value={product.category?.name} />
-          </dl>
-        </div>
+      <p className="text-sm text-muted-foreground">{product.brand.name}</p>
+      <h1 className="mt-1 text-3xl font-semibold tracking-tight">{view.name}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">English: {view.englishName ?? "English translation missing"}</p>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <ProductStatusBadge status={product.status} />
+        <VerificationBadge level={product.verification} lastVerifiedAt={product.lastVerifiedAt} />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Internal ID {product.gprId} · {internalIdentifierDisclaimer()}
+      </p>
+
+      <div className="mt-8">
+        <ProductPassport
+          data={view}
+          image={mainImage ? { url: mainImage.url, alt: mainImage.altText ?? view.name } : null}
+        />
       </div>
 
-      <section className="mt-10 grid gap-6 lg:grid-cols-2">
-        <Block title="Ingredients">
-          {english?.ingredients || original?.ingredients || "No ingredients published yet."}
-        </Block>
-        <Block title="Allergens">
-          {product.allergens.length === 0
-            ? "No allergen statements published yet."
-            : product.allergens
-                .map((item) => `${item.allergen.name}: ${item.presence.replace("_", " ").toLowerCase()}`)
-                .join(", ")}
-        </Block>
-        <Block title="Nutrition">
-          {product.nutrition ? (
-            <ul className="grid grid-cols-2 gap-2">
-              <li>Energy: {String(product.nutrition.energyKcal ?? "—")} kcal</li>
-              <li>Fat: {String(product.nutrition.fat ?? "—")} g</li>
-              <li>Saturates: {String(product.nutrition.saturatedFat ?? "—")} g</li>
-              <li>Carbohydrate: {String(product.nutrition.carbohydrate ?? "—")} g</li>
-              <li>Sugars: {String(product.nutrition.sugars ?? "—")} g</li>
-              <li>Protein: {String(product.nutrition.protein ?? "—")} g</li>
-              <li>Salt: {String(product.nutrition.salt ?? "—")} g</li>
-              <li>Fibre: {String(product.nutrition.fibre ?? "—")} g</li>
-            </ul>
-          ) : (
-            "No nutrition information published yet."
-          )}
-        </Block>
-        <Block title="Packaging">
-          {product.packaging
-            ? `${product.packaging.type.toLowerCase()} · ${product.packaging.material.toLowerCase()}`
-            : "No packaging information published yet."}
-        </Block>
-      </section>
-
-      <section className="mt-8">
-        <h2 className="text-sm font-semibold">Translations</h2>
-        <ul className="mt-3 divide-y rounded-xl border border-border">
-          {product.translations.map((translation) => (
-            <li key={translation.id} className="px-4 py-3 text-sm">
-              <span className="font-mono text-xs uppercase text-muted-foreground">
-                {translation.languageCode}
-              </span>
-              <span className="ml-3">{translation.productName}</span>
-            </li>
-          ))}
-        </ul>
-        {!english ? (
-          <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">English translation missing</p>
-        ) : null}
-      </section>
-
-      <section className="mt-8 text-sm text-muted-foreground">
-        <p>
-          QR destination: {appUrl}
-          {publicPath}
-        </p>
-        <p className="mt-1">
-          Countries available:{" "}
-          {product.countries.length > 0
-            ? product.countries.map((item) => item.country.name).join(", ")
-            : "Not specified"}
-        </p>
-      </section>
+      <p className="mt-10 text-xs leading-5 text-muted-foreground">{gtinIssuanceDisclaimer()}</p>
     </div>
-  );
-}
-
-function Item({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="mt-1">{value || "—"}</dd>
-    </div>
-  );
-}
-
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-border p-5">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <div className="mt-3 text-sm leading-6 text-muted-foreground">{children}</div>
-    </section>
   );
 }

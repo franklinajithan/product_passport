@@ -1,7 +1,34 @@
 import { prisma } from "@/database/client";
 import type { PublicProductCard } from "@/types";
+import { gtinLookupCandidates } from "@/lib/standards/gs1/gtin";
 import { formatMeasurement } from "@/utilities/format";
-import { looksLikeBarcode, normalizeBarcode } from "@/utilities/gtin";
+import { looksLikeBarcode } from "@/utilities/gtin";
+
+export const productDetailInclude = {
+  brand: true,
+  manufacturer: { include: { country: true } },
+  organisation: true,
+  originCountry: true,
+  category: true,
+  subcategory: true,
+  measurement: true,
+  nutrition: true,
+  packaging: true,
+  translations: { include: { language: true } },
+  barcodes: true,
+  images: { orderBy: { sortOrder: "asc" as const } },
+  allergens: { include: { allergen: true } },
+  ingredients: { include: { ingredient: { include: { translations: true } } }, orderBy: { sortOrder: "asc" as const } },
+  certifications: { include: { certification: true } },
+  countries: { include: { country: true } },
+  recalls: { include: { countries: { include: { country: true } } }, orderBy: { recalledAt: "desc" as const } },
+  identifiers: { include: { symbols: true, organisation: true } },
+  parties: true,
+  digitalLinks: true,
+  hierarchyAsParent: { include: { child: { include: { translations: true, barcodes: true } } } },
+  hierarchyAsChild: { include: { parent: { include: { translations: true, barcodes: true } } } },
+  revisions: { orderBy: { version: "desc" as const } },
+} as const;
 
 const productCardInclude = {
   brand: true,
@@ -10,6 +37,7 @@ const productCardInclude = {
   measurement: true,
   translations: true,
   barcodes: { where: { isPrimary: true }, take: 1 },
+  identifiers: { take: 1, orderBy: { createdAt: "asc" } },
   images: { where: { isMain: true }, take: 1 },
 } as const;
 
@@ -28,6 +56,7 @@ function toCard(product: {
   } | null;
   translations: { languageCode: string; productName: string }[];
   barcodes: { value: string }[];
+  identifiers?: { displayValue: string }[];
   images: { url: string }[];
 }): PublicProductCard {
   const original = product.translations.find((item) => item.languageCode !== "en") ?? product.translations[0];
@@ -43,7 +72,7 @@ function toCard(product: {
     );
 
   return {
-    gtin: product.barcodes[0]?.value ?? null,
+    gtin: product.barcodes[0]?.value ?? product.identifiers?.[0]?.displayValue ?? null,
     gprId: product.gprId,
     name: original?.productName ?? english?.productName ?? "Unnamed product",
     englishName: english?.productName ?? null,
@@ -57,59 +86,50 @@ function toCard(product: {
   };
 }
 
+export async function findProductById(id: string) {
+  return prisma.product.findUnique({
+    where: { id },
+    include: productDetailInclude,
+  });
+}
+
 export async function findProductByGtin(gtin: string) {
-  const barcode = await prisma.productBarcode.findUnique({
-    where: { value: normalizeBarcode(gtin) },
-    include: {
-      product: {
-        include: {
-          brand: true,
-          manufacturer: { include: { country: true } },
-          organisation: true,
-          originCountry: true,
-          category: true,
-          subcategory: true,
-          measurement: true,
-          nutrition: true,
-          packaging: true,
-          translations: { include: { language: true } },
-          barcodes: true,
-          images: { orderBy: { sortOrder: "asc" } },
-          allergens: { include: { allergen: true } },
-          ingredients: { include: { ingredient: { include: { translations: true } } }, orderBy: { sortOrder: "asc" } },
-          certifications: { include: { certification: true } },
-          countries: { include: { country: true } },
-          recalls: { include: { countries: { include: { country: true } } }, orderBy: { recalledAt: "desc" } },
-        },
-      },
+  const candidates = gtinLookupCandidates(gtin);
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const identifier = await prisma.productIdentifier.findFirst({
+    where: {
+      OR: [
+        { identifierValue: { in: candidates } },
+        { canonicalGtin14: { in: candidates } },
+        { displayValue: { in: candidates } },
+      ],
     },
+    select: { productId: true },
   });
 
-  return barcode?.product ?? null;
+  if (identifier?.productId) {
+    return findProductById(identifier.productId);
+  }
+
+  const barcode = await prisma.productBarcode.findFirst({
+    where: { value: { in: candidates } },
+    select: { productId: true },
+  });
+
+  if (barcode) {
+    return findProductById(barcode.productId);
+  }
+
+  return null;
 }
 
 export async function findProductByPublicId(identifier: string) {
   const byGpr = await prisma.product.findUnique({
     where: { gprId: identifier.toUpperCase() },
-    include: {
-      brand: true,
-      manufacturer: { include: { country: true } },
-      organisation: true,
-      originCountry: true,
-      category: true,
-      subcategory: true,
-      measurement: true,
-      nutrition: true,
-      packaging: true,
-      translations: { include: { language: true } },
-      barcodes: true,
-      images: { orderBy: { sortOrder: "asc" } },
-      allergens: { include: { allergen: true } },
-      ingredients: { include: { ingredient: { include: { translations: true } } }, orderBy: { sortOrder: "asc" } },
-      certifications: { include: { certification: true } },
-      countries: { include: { country: true } },
-      recalls: { include: { countries: { include: { country: true } } }, orderBy: { recalledAt: "desc" } },
-    },
+    include: productDetailInclude,
   });
 
   if (byGpr) {
@@ -126,7 +146,7 @@ export async function searchProducts(query: string): Promise<PublicProductCard[]
   }
 
   if (looksLikeBarcode(trimmed)) {
-    const product = await findProductByGtin(trimmed);
+    const product = await findProductByPublicId(trimmed);
     return product ? [toCard(product)] : [];
   }
 
@@ -189,7 +209,8 @@ export async function getAdminDashboardData() {
     apiRequestsToday,
     newProductsToday,
     pendingCompanies,
-    pendingClaims,
+    pendingProductClaims,
+    pendingIdentifierClaims,
     users,
     openReports,
   ] = await Promise.all([
@@ -201,9 +222,11 @@ export async function getAdminDashboardData() {
     prisma.product.count({ where: { createdAt: { gte: startOfDay } } }),
     prisma.organisation.count({ where: { status: "PENDING_VERIFICATION" } }),
     prisma.productClaim.count({ where: { status: "PENDING" } }),
+    prisma.identifierClaim.count({ where: { status: "PENDING" } }),
     prisma.user.count(),
     prisma.productReport.count({ where: { status: { in: ["OPEN", "IN_REVIEW"] } } }),
   ]);
+  const pendingClaims = pendingProductClaims + pendingIdentifierClaims;
 
   const pendingOrganisations = await prisma.organisation.findMany({
     where: { status: "PENDING_VERIFICATION" },
