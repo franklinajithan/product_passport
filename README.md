@@ -57,7 +57,7 @@ Standards logic lives in `src/lib/standards` and is framework-independent.
 
 ## Local setup
 
-Requires Node.js 20.19+ (20.14 works for development with engine warnings) and Docker for PostgreSQL.
+Requires Node.js 20.19+ (20.14 works for development with engine warnings) and a [Supabase](https://supabase.com) Postgres database.
 
 1. Clone the project.
 
@@ -79,27 +79,29 @@ cp .env.example .env
 
 Set `AUTH_SECRET` to a long random string before going anywhere near production.
 
-PostgreSQL is published on **5433** so it does not collide with other local databases. The connection string in `.env.example` already uses that port.
+This project uses the Supabase project **Product_Passport** (`lzqnefduulkcprhqlujv`). In the Supabase dashboard open **Connect → ORMs → Prisma** and paste the Transaction pooler string into `DATABASE_URL` and the Session pooler string into `DIRECT_URL`. Keep `pgbouncer=true` and `sslmode=require` on `DATABASE_URL`.
 
-5. Run Prisma migrations.
+4. Apply Prisma migrations to Supabase.
 
 ```bash
-npx prisma migrate dev --name init
+npm run db:deploy
 ```
 
-6. Seed the database.
+5. Seed the database.
 
 ```bash
 npm run db:seed
 ```
 
-7. Start the development server.
+6. Start the development server.
 
 ```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Optional: a local Postgres container is still available with `docker compose --profile local-db up postgres`. Point `DATABASE_URL` and `DIRECT_URL` at `postgresql://gpr:gpr@localhost:5433/gpr?schema=public` if you use it.
 
 ### Seeded accounts
 
@@ -120,7 +122,8 @@ npm run dev          # Next.js dev server
 npm run typecheck    # TypeScript
 npm run lint         # ESLint
 npm run test         # Vitest (GTIN, completeness, permissions)
-npm run db:migrate   # Prisma migrate
+npm run db:deploy    # Apply Prisma migrations to Supabase
+npm run db:migrate   # Prisma migrate (local/dev only)
 npm run db:seed      # Seed reference + demo data
 ```
 
@@ -130,7 +133,7 @@ npm run db:seed      # Seed reference + demo data
 docker compose up --build
 ```
 
-The `web` service expects migrations to have been applied (run `prisma migrate deploy` against the same database, or use the local migrate step above).
+The `web` service reads `DATABASE_URL` from `.env` (Supabase). Apply schema changes with `npm run db:deploy` against that same database before starting the container.
 
 ## Security notes
 

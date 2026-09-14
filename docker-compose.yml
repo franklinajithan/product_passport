@@ -1,5 +1,6 @@
 services:
   postgres:
+    profiles: ["local-db"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -24,12 +25,8 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://gpr:gpr@postgres:5432/gpr?schema=public
       AUTH_URL: http://localhost:3000
       APP_URL: http://localhost:3000
-    depends_on:
-      postgres:
-        condition: service_healthy
 
 volumes:
   gpr_pgdata:
