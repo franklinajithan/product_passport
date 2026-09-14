@@ -2,7 +2,7 @@ export type DemoTranslation = {
   language: string;
   code: string;
   name: string;
-  source: "MANUFACTURER" | "HUMAN_VERIFIED" | "MACHINE";
+  source: "MANUFACTURER" | "HUMAN_VERIFIED" | "MACHINE" | "PUBLIC_DEMO";
 };
 
 export type DemoPackNode = {
@@ -15,45 +15,85 @@ export type DemoPackNode = {
 
 export const DEMO_LABEL = "Demonstration model — not a live production statistic";
 
+export const DEMO_PRODUCT_DISCLAIMER =
+  "Product information shown for demonstration. Not verified by Coca-Cola through Global Product Registry.";
+
 export const DEMO_PASSPORT = {
-  gtin: "5901234567893",
-  canonicalGTIN14: "05901234567893",
-  name: "Masło Ekstra",
-  englishName: "Extra Butter",
-  brand: "Example Brand",
-  brandOwner: "Example Foods Sp. z o.o.",
-  manufacturer: "Example Foods — Warsaw Dairy Plant",
-  importer: "Example Distribution UK Ltd",
-  origin: "Poland",
-  netContent: "200 g",
-  status: "Active",
-  lastVerified: "10 September 2026",
+  gtin: "5449000000996",
+  canonicalGTIN14: "05449000000996",
+  name: "Coca-Cola Original Taste",
+  englishName: "Coca-Cola Original Taste",
+  brand: "Coca-Cola",
+  brandOwner: "The Coca-Cola Company",
+  manufacturer: "The Coca-Cola Company",
+  importer: "Not attested on this platform",
+  origin: "United Kingdom",
+  targetMarket: "United Kingdom",
+  productType: "Sparkling Soft Drink",
+  netContent: "330 ml",
+  status: "Public demo",
+  lastVerified: null as string | null,
   carrier: "EAN-13",
-  verification: "MANUFACTURER_VERIFIED",
-  completeness: 92,
-  twoDReadiness: 82,
+  verification: "PUBLIC_DEMO_RECORD",
+  completeness: 51,
+  twoDReadiness: 40,
+  ingredients:
+    "Carbonated Water, Sugar, Colour (Caramel E150d), Acid (Phosphoric Acid), Natural Flavourings, Caffeine Flavouring.",
+  nutritionPer100ml: {
+    energy: "180 kJ / 42 kcal",
+    fat: "0 g",
+    saturates: "0 g",
+    carbohydrate: "10.6 g",
+    sugars: "10.6 g",
+    protein: "0 g",
+    salt: "0 g",
+  },
 };
 
 export const DEMO_TRANSLATIONS: DemoTranslation[] = [
-  { language: "Polish", code: "pl", name: "Masło Ekstra", source: "MANUFACTURER" },
-  { language: "English", code: "en", name: "Extra Butter", source: "MANUFACTURER" },
-  { language: "French", code: "fr", name: "Beurre Extra", source: "MANUFACTURER" },
-  { language: "Korean", code: "ko", name: "엑스트라 버터", source: "HUMAN_VERIFIED" },
-  { language: "Japanese", code: "ja", name: "エクストラバター", source: "HUMAN_VERIFIED" },
-  { language: "German", code: "de", name: "Extra Butter", source: "MACHINE" },
+  {
+    language: "English",
+    code: "en",
+    name: "Coca-Cola Original Taste",
+    source: "PUBLIC_DEMO",
+  },
 ];
 
 export const DEMO_PACKAGING: DemoPackNode[] = [
-  { level: "Each / consumer unit", gtin: "5901234567893", quantityFromChild: null, carrier: "EAN-13" },
-  { level: "Inner pack", gtin: "5901234567909", quantityFromChild: 6, carrier: "ITF-14" },
-  { level: "Case", gtin: "15901234567906", quantityFromChild: 4, carrier: "ITF-14" },
-  { level: "Pallet / logistics", gtin: "SSCC assigned at shipping", quantityFromChild: 60, carrier: "GS1-128", note: "SSCC is not a GTIN" },
+  {
+    level: "Each / consumer unit",
+    gtin: "5449000000996",
+    quantityFromChild: null,
+    carrier: "EAN-13",
+  },
+  {
+    level: "Inner pack",
+    gtin: "Own GTIN required",
+    quantityFromChild: 6,
+    carrier: "ITF-14",
+  },
+  {
+    level: "Case",
+    gtin: "Own GTIN required",
+    quantityFromChild: 4,
+    carrier: "ITF-14",
+  },
+  {
+    level: "Pallet / logistics",
+    gtin: "SSCC assigned at shipping",
+    quantityFromChild: 60,
+    carrier: "GS1-128",
+    note: "SSCC is not a GTIN",
+  },
 ];
 
 export const DEMO_TIMELINE = [
-  { year: "2025", title: "Product created", detail: "200 g consumer unit published with GTIN 5901234567893." },
-  { year: "2026", title: "Artwork updated", detail: "Packaging artwork refreshed. Identification unchanged — SAME_GTIN." },
-  { year: "2027", title: "Net quantity change modelled", detail: "500 g → 450 g would require NEW_GTIN. Historical 200 g record stays visible." },
+  {
+    year: "Demo",
+    title: "Public demonstration record",
+    detail:
+      "330 ml consumer unit shown with GTIN 5449000000996. Not verified by Coca-Cola through this platform.",
+  },
 ];
 
 export const PUBLIC_NAV = [

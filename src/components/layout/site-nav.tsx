@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Menu, X } from "lucide-react";
 import { APP_NAME } from "@/utilities/constants";
 import { PUBLIC_NAV } from "@/data/demo-showcase";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -31,16 +32,16 @@ export function SiteHeaderNav({
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur">
-      <PageContainer className="flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-[11px] font-semibold text-primary-foreground">
+      <PageContainer className="flex h-16 min-w-0 items-center justify-between gap-2 sm:gap-4">
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2">
+          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-[11px] font-semibold text-primary-foreground sm:h-8 sm:w-8">
             GPR
           </span>
-          <span className="hidden text-sm font-semibold sm:inline">{APP_NAME}</span>
+          <span className="hidden truncate text-sm font-semibold sm:inline">{APP_NAME}</span>
         </Link>
 
         {!app ? (
-          <nav className="hidden items-center gap-5 text-sm lg:flex">
+          <nav className="hidden items-center gap-5 text-sm xl:flex">
             {PUBLIC_NAV.map((item) => (
               <Link
                 key={item.href}
@@ -57,7 +58,7 @@ export function SiteHeaderNav({
             ))}
           </nav>
         ) : (
-          <form action="/search" method="get" className="hidden max-w-md flex-1 md:block">
+          <form action="/search" method="get" className="hidden max-w-md min-w-0 flex-1 md:block">
             <label htmlFor="workspace-search" className="sr-only">
               Search products
             </label>
@@ -70,44 +71,80 @@ export function SiteHeaderNav({
           </form>
         )}
 
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" asChild className="hidden sm:inline-flex">
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" asChild className="hidden xl:inline-flex">
             <Link href="/search">Search</Link>
           </Button>
-          <Button variant="ghost" asChild className="hidden sm:inline-flex">
+          <Button variant="ghost" asChild className="hidden xl:inline-flex">
             <Link href="/scan">Scan</Link>
           </Button>
-          <ThemeToggle />
+          <ThemeToggle className="h-11 w-11" />
           {user ? (
             <UserMenu email={user.email} name={user.name} role={user.role} />
           ) : (
             <>
-              <Button variant="ghost" asChild>
+              <Button variant="ghost" asChild className="hidden xl:inline-flex">
                 <Link href="/login">Sign in</Link>
               </Button>
-              <Button asChild>
+              <Button asChild className="hidden xl:inline-flex">
                 <Link href="/register">Register company</Link>
+              </Button>
+              <Button asChild className="h-11 px-3 xl:hidden">
+                <Link href="/register">Register</Link>
               </Button>
             </>
           )}
           {!app ? (
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setOpen((value) => !value)}>
-              <span className="sr-only">Menu</span>
-              <span aria-hidden className="text-lg leading-none">
-                ☰
-              </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 xl:hidden"
+              aria-expanded={open}
+              aria-controls="mobile-nav"
+              onClick={() => setOpen((value) => !value)}
+            >
+              <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
+              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           ) : null}
         </div>
       </PageContainer>
       {open && !app ? (
-        <div className="border-t border-border lg:hidden">
-          <PageContainer className="flex flex-col gap-2 py-4">
+        <div id="mobile-nav" className="border-t border-border xl:hidden">
+          <PageContainer className="flex flex-col py-3">
             {PUBLIC_NAV.map((item) => (
-              <Link key={item.href} href={item.href} className="py-1 text-sm" onClick={() => setOpen(false)}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex min-h-11 items-center py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setOpen(false)}
+              >
                 {item.label}
               </Link>
             ))}
+            <Link
+              href="/search"
+              className="flex min-h-11 items-center py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setOpen(false)}
+            >
+              Search
+            </Link>
+            <Link
+              href="/scan"
+              className="flex min-h-11 items-center py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setOpen(false)}
+            >
+              Scan barcode
+            </Link>
+            {!user ? (
+              <Link
+                href="/login"
+                className="flex min-h-11 items-center py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setOpen(false)}
+              >
+                Sign in
+              </Link>
+            ) : null}
           </PageContainer>
         </div>
       ) : null}
